@@ -58,6 +58,12 @@ public final class Siren: NSObject {
     /// The completion handler used to return the results or errors returned by Siren.
     private var resultsHandler: ResultsHandler?
 
+    /// Prevent can't appear update dialog when user swipe down the notification center screen to the bottom of screen when called Siren.shared.wail as .onForeground
+    private var appDidBecomeActiveWorkItem: DispatchWorkItem?
+
+    /// The time to consider what is it called by notification center screen to bottom
+    private let delayTimeToConsiderCalledByNotificationCenterScreen = 0.02
+    
     /// The deinitialization method that clears out all observers,
     deinit {
         presentationManager.cleanUp()
@@ -272,9 +278,14 @@ private extension Siren {
             .addObserver(forName: UIApplication.didBecomeActiveNotification,
                          object: nil,
                          queue: nil) { [weak self] _ in
-                            guard let self = self else { return }
-                            self.performVersionCheck()
-        }
+                guard let self = self else { return }
+                self.appDidBecomeActiveWorkItem = DispatchWorkItem {
+                    self.performVersionCheck()
+                }
+                if let appDidBecomeActiveWorkItem = self.appDidBecomeActiveWorkItem {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + self.delayTimeToConsiderCalledByNotificationCenterScreen, execute: appDidBecomeActiveWorkItem)
+                }
+            }
     }
 
     /// Adds an observer that listens for when the user enters the app switcher
@@ -286,9 +297,11 @@ private extension Siren {
                 .addObserver(forName: UIApplication.willResignActiveNotification,
                              object: nil,
                              queue: nil) { [weak self] _ in
-                                guard let self = self else { return }
-                                self.presentationManager.cleanUp()
-            }
+                    guard let self = self else { return }
+                    self.appDidBecomeActiveWorkItem?.cancel()
+                    self.appDidBecomeActiveWorkItem = nil
+                    self.presentationManager.cleanUp()
+                }
         }
 
         if applicationDidEnterBackgroundObserver == nil {
